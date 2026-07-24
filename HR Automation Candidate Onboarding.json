@@ -1,0 +1,423 @@
+{
+  "name": "[Prod] HR-Automation: Enterprise AD Provisioning Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "check_sogo",
+              "leftValue": "={{ ($('Loop: Candidates Batch').item.json.sending_message || '').toString().trim().toLowerCase() }}",
+              "rightValue": "sogo",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1e1e456d-f41f-4a60-aa53-79522b7c79af",
+      "name": "IF: Check sending_message",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-1392, 928]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "del1",
+              "leftValue": "={{ $json.requireDeletion }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8e84fbfc-ae8b-4754-84c4-2c26faaacf3f",
+      "name": "IF: Delete Old Account",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-3408, 1120]
+    },
+    {
+      "parameters": {
+        "command": "=cat << 'EOF' > /tmp/delete_{{ $json.sAMAccountName }}.txt\n{{ $json.deleteDNs.join('\\n') }}\nEOF\nLDAPTLS_REQCERT=never ldapdelete -H ldaps://<YOUR_DC_IP>:636 -x -D \"service_account@example.com\" -w \"<YOUR_LDAP_PASSWORD>\" -f /tmp/delete_{{ $json.sAMAccountName }}.txt"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [-3184, 1040],
+      "id": "5348c34e-333d-4bfe-868a-c7dd09fd49e3",
+      "name": "Delete Old AD Accounts",
+      "retryOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "35d60033-1846-4e06-af65-c845ea96e81d",
+      "name": "Trigger: 1h Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-5648, 1504]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "<YOUR_GOOGLE_SHEET_ID>",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "<YOUR_SHEET_GID>",
+          "mode": "list",
+          "cachedResultName": "Candidates",
+          "cachedResultUrl": "[https://docs.google.com/spreadsheets/d/](https://docs.google.com/spreadsheets/d/)<YOUR_GOOGLE_SHEET_ID>/edit#gid=<YOUR_SHEET_GID>"
+        },
+        "options": {}
+      },
+      "id": "4029cb39-019a-4051-bb3b-267307fb8401",
+      "name": "Fetch Pending Candidates",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [-5424, 1504],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "<YOUR_CREDENTIAL_ID>",
+          "name": "Google Sheets Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json['Login AD'] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7efc9ba3-a187-416a-8405-a644672d8f72",
+      "name": "Filter: Unprocessed Only",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [-5200, 1504]
+    },
+    {
+      "parameters": {
+        "maxItems": 100
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [-4976, 1504],
+      "id": "974848a7-1dc8-4fd6-9fcf-af0a307f8ebf",
+      "name": "Limit: Batch Size"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [-4752, 1504],
+      "id": "657128b8-7dd5-4785-be4d-7305b1391d78",
+      "name": "Loop: Candidates Batch"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [-4528, 1120],
+      "id": "e90f4160-83b3-4dbd-9d26-6a476e582087",
+      "name": "Delay: Lever API Limit"
+    },
+    {
+      "parameters": {
+        "url": "=[https://api.lever.co/v1/opportunities/](https://api.lever.co/v1/opportunities/){{ $('Loop: Candidates Batch').item.json.lever_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [-4304, 1120],
+      "id": "3460aaf0-9084-42c3-b7cc-3474c28f858c",
+      "name": "Fetch Lever Profile",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "<YOUR_LEVER_CREDENTIAL_ID>",
+          "name": "LEVER API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Транслітерація\nconst translitMap = {\n  'а':'a','б':'b','в':'v','г':'h','д':'d','е':'e','є':'ie','ж':'zh',\n  'з':'z','и':'y','і':'i','ї':'i','й':'i','к':'k','л':'l','м':'m','н':'n',\n  'о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts',\n  'ч':'ch','ш':'sh','щ':'shch','ь':'','ю':'iu','я':'ia',\n  \"'\":'', '’':''\n};\n\nfunction translit(str) {\n  return str.toLowerCase().split('')\n    .map(ch => translitMap[ch] !== undefined ? translitMap[ch] : ch)\n    .join('').replace(/[^a-z0-9]/g, '');\n}\n\n// Генерація пароля\nfunction generatePassword() {\n  const chars = \"abcdefghijklmnopqrstuvwxyz\";\n  const caps = \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\";\n  const nums = \"0123456789\";\n  const specs = \"!@#*%^&\"; \n  let pass = \"\";\n  pass += caps[Math.floor(Math.random() * caps.length)]; \n  pass += specs[Math.floor(Math.random() * specs.length)]; \n  for (let i = 0; i < 4; i++) pass += nums[Math.floor(Math.random() * nums.length)]; \n  for (let i = 0; i < 10; i++) pass += chars[Math.floor(Math.random() * chars.length)]; \n  return pass;\n}\n\nconst DOMAIN = 'example.com'; \nconst TARGET_OU = 'OU=NewHires,DC=example,DC=com'; \n\nconst leverData = $json.data || {};\nconst sheetData =$('Loop: Candidates Batch').item.json;\n\nconst rawFullName = (sheetData.full_name || leverData.name || 'Unknown').trim();\nconst fullName = rawFullName.replace(/[\\(\\)\\*\\\\\\,\\+\\<\\>\\;]/g, ''); \n\nconst nameParts = fullName.split(/\\s+/);\nconst first = nameParts[0];\n\nlet lastForLogin = '';\nlet lastForAD = '';\n\nif (nameParts.length > 1) {\n    lastForLogin = nameParts.slice(1).join('');\n    lastForAD = nameParts.slice(1).join(' ');\n} else {\n    lastForLogin = first;\n    lastForAD = first;\n}\n\nlet personalEmail = '';\nif (leverData.emails && leverData.emails.length > 0) {\n     personalEmail = leverData.emails[0];\n} else if (sheetData.pay_pal_id && sheetData.pay_pal_id.includes('@')) {\n     personalEmail = sheetData.pay_pal_id.trim();\n}\n\nconst firstLetter = translit(first).charAt(0);\nconst lastL = translit(lastForLogin); \n\nconst fullLogin = `${firstLetter}.${lastL}`;\nconst sAMAccountName = fullLogin.substring(0, 20);\nconst email = `${fullLogin}@${DOMAIN}`;\nconst password = generatePassword(); \n\nconst unicodePwd = Buffer.from(`\"${password}\"`, 'utf16le').toString('base64');\n\nreturn {\n  json: {\n    rowNumber: sheetData.row_number || sheetData.__rowNumber,\n    firstName: first,\n    lastName: lastForAD,\n    sAMAccountName: sAMAccountName,    \n    userPrincipalName: email,          \n    displayName: `${first} ${lastForAD}`.trim(),\n    targetOU: TARGET_OU,\n    generatedPassword: password,        \n    personalEmail: personalEmail,\n    unicodePwd: unicodePwd              \n  }\n};"
+      },
+      "id": "4c9ab3e1-a34e-4a82-a598-c54cd44c1fc5",
+      "name": "Format Candidate Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-4080, 1120]
+    },
+    {
+      "parameters": {
+        "baseDN": "DC=example,DC=com",
+        "searchFor": "custom",
+        "customFilter": "=(|(sAMAccountName={{ $json.sAMAccountName }}*)(userPrincipalName={{$json.userPrincipalName }}*)(cn={{ $json.firstName }} {{$json.lastName }}*))",
+        "returnAll": true,
+        "options": {
+          "scope": "sub"
+        }
+      },
+      "id": "3b1640f4-4ad8-48dd-a076-c668e8eecf20",
+      "name": "Search AD Duplicates",
+      "type": "n8n-nodes-base.ldap",
+      "typeVersion": 1,
+      "position": [-3856, 1120],
+      "alwaysOutputData": true,
+      "credentials": {
+        "ldap": {
+          "id": "<YOUR_LDAP_CREDENTIAL_ID>",
+          "name": "LDAP Service Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Logic for finding duplicates and appending numerical suffix to SAMAccountName up to 20 chars\nconst searchResults = $input.all();\nconst candidate =$('Format Candidate Payload').item.json;\nconst existingLogins = new Set();\nconst existingNames = new Set();\nconst first = candidate.firstName || '';\nconst last = candidate.lastName || '';\nconst baseLogin = candidate.sAMAccountName.toLowerCase();\nconst baseName = `${first} ${last}`.toLowerCase();\nconst candidateEmail = (candidate.personalEmail || '').toLowerCase().trim();\nlet requireDeletion = false;\nlet deleteDNs = [];\nlet maxSuffix = 0;\n\nfor (const res of searchResults) {\n  if (res.json && Object.keys(res.json).length > 0) {\n    const adLogin = (res.json.sAMAccountName || '').toLowerCase().trim();\n    const adName = (res.json.cn || res.json.displayName || '').toLowerCase().trim();\n    if (adLogin.startsWith(baseLogin)) {\n      const remainder = adLogin.substring(baseLogin.length);\n      if (remainder === '') maxSuffix = Math.max(maxSuffix, 0);\n      else if (remainder.startsWith('_')) {\n        const num = parseInt(remainder.substring(1), 10);\n        if (!isNaN(num)) maxSuffix = Math.max(maxSuffix, num);\n      }\n    }\n    let adEmail = res.json.postOfficeBox || '';\n    if (Array.isArray(adEmail)) adEmail = adEmail[0];\n    adEmail = adEmail.toLowerCase().trim();\n    if (candidateEmail && adEmail === candidateEmail) {\n        requireDeletion = true;\n        const dn = res.json.dn || res.json.distinguishedName || res.json.DN || '';\n        if (dn) deleteDNs.push(dn);\n    }\n    if (res.json.sAMAccountName) existingLogins.add(adLogin);\n    if (res.json.cn) existingNames.add(adName);\n    else if (res.json.displayName) existingNames.add(adName);\n  }\n}\nlet finalLogin = candidate.sAMAccountName;\nlet finalName = candidate.displayName;\nlet counter = 1;\nlet forceSuffix = false;\nif (requireDeletion) {\n    counter = maxSuffix + 1;\n    forceSuffix = true;\n}\nif (forceSuffix || existingLogins.has(baseLogin) || existingNames.has(baseName)) {\n  while (existingLogins.has(`${baseLogin}_${counter}`.toLowerCase()) || existingNames.has(`${baseName} ${counter}`.toLowerCase())) counter++;\n  const suffix = `_${counter}`;\n  const allowedLength = 20 - suffix.length; \n  finalLogin = `${candidate.sAMAccountName.substring(0, allowedLength)}${suffix}`;\n  finalName = `${first} ${last} ${counter}`.trim();\n}\nconst updatedCandidate = {\n  ...candidate,\n  sAMAccountName: finalLogin,\n  userPrincipalName: `${finalLogin}@example.com`,\n  displayName: finalName,\n  requireDeletion: requireDeletion,\n  deleteDNs: deleteDNs\n};\nconst adPassword = `\"${candidate.generatedPassword}\"`; \nupdatedCandidate.unicodePwd = Buffer.from(adPassword, 'utf16le').toString('base64');\nreturn { json: updatedCandidate };"
+      },
+      "id": "07a09a4c-4c92-4a8d-9ea2-2ff499ad742c",
+      "name": "Generate Unique Credentials",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-3632, 1120]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "dn": "={{ \"CN=\" + $('Generate Unique Credentials').item.json.displayName + \",OU=NewHires,DC=example,DC=com\" }}",
+        "attributes": {
+          "attribute": [
+            { "id": "objectClass", "value": "user" },
+            { "id": "sAMAccountName", "value": "={{ $('Generate Unique Credentials').item.json.sAMAccountName }}" },
+            { "id": "userPrincipalName", "value": "={{ $('Generate Unique Credentials').item.json.userPrincipalName }}" },
+            { "id": "displayName", "value": "={{ $('Generate Unique Credentials').item.json.displayName }}" },
+            { "id": "mail", "value": "={{ $('Generate Unique Credentials').item.json.userPrincipalName }}" },
+            { "id": "givenName", "value": "={{ $('Generate Unique Credentials').item.json.firstName }}" },
+            { "id": "sn", "value": "={{ $('Generate Unique Credentials').item.json.lastName }}" },
+            { "id": "postOfficeBox", "value": "={{ $('Generate Unique Credentials').item.json.personalEmail }}" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.ldap",
+      "typeVersion": 1,
+      "position": [-2960, 1120],
+      "id": "37e0e33c-5e71-4b10-b4c3-f62d9e53c8a2",
+      "name": "Create AD Account",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "ldap": {
+          "id": "<YOUR_LDAP_CREDENTIAL_ID>",
+          "name": "LDAP Service Account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ok1",
+              "leftValue": "={{ $json.dn }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "03771b6b-f249-4736-9d82-b196a1405463",
+      "name": "Verify: AD Creation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-2736, 1120]
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [-2512, 944],
+      "id": "c98414ca-1e8d-44cc-92c6-22dabee257a6",
+      "name": "Delay: AD Replication"
+    },
+    {
+      "parameters": {
+        "command": "=cat << 'EOF' > /tmp/activate_{{ $('Generate Unique Credentials').item.json.sAMAccountName }}.ldif\ndn: CN={{ $('Generate Unique Credentials').item.json.displayName }},OU=NewHires,DC=example,DC=com\nchangetype: modify\nreplace: unicodePwd\nunicodePwd:: {{ $('Generate Unique Credentials').item.json.unicodePwd }}\n-\nreplace: userAccountControl\nuserAccountControl: 512\n-\nreplace: pwdLastSet\npwdLastSet: -1\n\ndn: CN=Role_StandardUser,OU=Groups,DC=example,DC=com\nchangetype: modify\nadd: member\nmember: CN={{ $('Generate Unique Credentials').item.json.displayName }},OU=NewHires,DC=example,DC=com\nEOF\nLDAPTLS_REQCERT=never ldapmodify -H ldaps://<YOUR_DC_IP>:636 -x -D \"service_account@example.com\" -w \"<YOUR_LDAP_PASSWORD>\" -f /tmp/activate_{{ $('Generate Unique Credentials').item.json.sAMAccountName }}.ldif"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [-2288, 944],
+      "id": "2fbd3ed7-1dbd-4fb8-8868-84d2f483a3e0",
+      "name": "Activate AD Account",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "<YOUR_GOOGLE_SHEET_ID>",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "<YOUR_SHEET_GID>",
+          "mode": "list",
+          "cachedResultName": "Candidates"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Format Candidate Payload').item.json.rowNumber }}",
+            "Sogo Mail": "={{ $('Generate Unique Credentials').item.json.userPrincipalName }}",
+            "Login AD": "={{ $('Generate Unique Credentials').item.json.sAMAccountName }}"
+          },
+          "matchingColumns": ["row_number"]
+        },
+        "options": {}
+      },
+      "id": "6869bd94-9c1e-4178-a33f-1c6ffe480b5a",
+      "name": "Update Sheet: Credentials",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [-2064, 944],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "<YOUR_CREDENTIAL_ID>",
+          "name": "Google Sheets Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "mail",
+        "fromEmail": "no-reply@example.com",
+        "fromName": "Company Support",
+        "toEmail": "={{ $('Generate Unique Credentials').item.json.personalEmail }}",
+        "subject": "Welcome to the team!",
+        "contentType": "text/html",
+        "contentValue": "=<p>Welcome, {{ $('Generate Unique Credentials').item.json.displayName }}!</p><p>Login: {{ $('Generate Unique Credentials').item.json.userPrincipalName }}</p><p>Password: {{ $('Generate Unique Credentials').item.json.generatedPassword }}</p>",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.sendGrid",
+      "typeVersion": 1,
+      "position": [-1840, 944],
+      "id": "c6efb750-0665-4594-bd4f-ecc3843565a5",
+      "name": "Email: Welcome Guide",
+      "credentials": {
+        "sendGridApi": {
+          "id": "<YOUR_SENDGRID_CREDENTIAL_ID>",
+          "name": "SendGrid account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "<YOUR_SUB_WORKFLOW_ID>",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "aField": "={{ $json.error_source + ': ' + ($('Create AD Account').item.json.error || $('Email: Welcome Guide').item.json.error || 'Деталі помилки втрачено') }}",
+            "thisFieldAcceptsAnyType": "={{ $('Format Candidate Payload').item.json.displayName }}",
+            "aNumber": "={{ $('Format Candidate Payload').item.json.rowNumber }}"
+          },
+          "matchingColumns": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [-48, 1312],
+      "id": "e3378a39-dc2f-4dfa-bb00-85385516dd0e",
+      "name": "Alert: Redmine Sub-Workflow"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+     "IF: Check sending_message": { "main": [ [ { "node": "Update Sheet: Status Sent", "type": "main", "index": 0 } ] ] },
+     "Delete Old AD Accounts": { "main": [ [ { "node": "Create AD Account", "type": "main", "index": 0 } ] ] }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "e52b0c73-c53c-4a7e-be18-70400e65bfea",
+  "id": "p4Si3srDC0XefjSf"
+}
