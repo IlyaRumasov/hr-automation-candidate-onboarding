@@ -1,0 +1,104 @@
+{
+  "name": "[Prod] Utility: AI Error Analyzer & Redmine Alerter",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample"
+      },
+      "id": "c055762a-8fe7-4141-a639-df2372f30060",
+      "typeVersion": 1.1,
+      "name": "Trigger: Sub-Workflow Call",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [272, 272]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Ти — досвідчений automation engineer. Твоє завдання — коротко і по суті пояснити команді техпідтримки або сисадмінам, чому впав воркфлоу створення користувача.\n\nОсь деталі інциденту, які передала система:\n- Ім'я кандидата: {{ $json.thisFieldAcceptsAnyType }}\n- Номер рядка в Google Таблиці: {{ $json.aNumber }}\n- Джерело та лог помилки: {{ $json.aField }}\n\n🛑 ВАЖЛИВЕ ПРАВИЛО: НЕ використовуй жодного маркдауну. Пиши виключно звичайним пласким текстом.",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [496, 272],
+      "id": "abccbb7c-b583-4c18-88c5-1957adefa4e3",
+      "name": "AI: Analyze Error Context"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [576, 496],
+      "id": "1df982d2-6392-49a2-8b34-d0b68065cbc4",
+      "name": "Gemini 2.5 Flash",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "<YOUR_GEMINI_CREDENTIAL_ID>",
+          "name": "Google Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let aiText = $input.first().json.text || \"Не вдалося отримати текст від ШІ\";\naiText = aiText.replace(/[\\u{1F600}-\\u{1F64F}\\u{1F300}-\\u{1F5FF}\\u{1F680}-\\u{1F6FF}\\u{1F700}-\\u{1F77F}]/gu, '');\n\nreturn {\n  issue: {\n    project_id: \"helpdesk\",\n    tracker_id: 15,\n    status_id: 1,\n    subject: \"Автоматизація AD: Розумний розбір помилки\",\n    description: aiText\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [848, 272],
+      "id": "61f18781-5997-49ff-aeab-6ef809b731ee",
+      "name": "Format: Redmine Issue Payload"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "[https://redmine.example.com/issues.json](https://redmine.example.com/issues.json)",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "8215d044-dc39-43c3-a193-6e7df5d700df",
+      "name": "Redmine: Create Helpdesk Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1072, 272],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "<YOUR_REDMINE_CREDENTIAL_ID>",
+          "name": "Redmine Service Bot"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger: Sub-Workflow Call": {
+      "main": [
+        [ { "node": "AI: Analyze Error Context", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Format: Redmine Issue Payload": {
+      "main": [
+        [ { "node": "Redmine: Create Helpdesk Ticket", "type": "main", "index": 0 } ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "mPiUYwRKY54MCyXs"
+}
